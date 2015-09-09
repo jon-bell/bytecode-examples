@@ -55,9 +55,9 @@
 					</execution>
 				</executions>
 				<configuration>
-					<argLine>-Xbootclasspath/p:${basedir}/target/HeapTaggingExample-0.0.1-SNAPSHOT.jar
-						-agentpath:${basedir}/target/libtaggingExample.so
-						-javaagent:${basedir}/target/HeapTaggingExample-0.0.1-SNAPSHOT.jar</argLine>
+					<argLine>-Xbootclasspath/p:${project.build.directory}/${project.build.finalName}.jar
+						-agentpath:${project.build.directory}/libtaggingExample.so
+						-javaagent:${project.build.directory}/${project.build.finalName}.jar</argLine>
 				</configuration>
 			</plugin>
 			<plugin>
