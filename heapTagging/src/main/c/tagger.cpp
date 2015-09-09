@@ -262,12 +262,12 @@ static void JNICALL cbVMStart(jvmtiEnv *jvmti, JNIEnv *env) {
 		klass = env->FindClass("net/jonbell/examples/jvmti/tagging/runtime/Tagger");
 		if (klass == NULL) {
 			fatal_error(
-					"ERROR: JNI: Cannot find edu.columbia.cs.psl.runtime.ArrayHelper with FindClass\n");
+					"ERROR: JNI: Cannot find Tagger with FindClass\n");
 		}
 		rc = env->RegisterNatives(klass, registry, 2);
 		if (rc != 0) {
 			fatal_error(
-					"ERROR: JNI: Cannot register natives for class edu.columbia.cs.psl.runtime.ArrayHelper\n");
+					"ERROR: JNI: Cannot register natives for Tagger\n");
 		}
 		/* Engage calls. */
 		field = env->GetStaticFieldID(klass, "engaged", "I");
