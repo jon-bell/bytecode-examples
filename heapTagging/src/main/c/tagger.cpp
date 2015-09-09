@@ -299,8 +299,6 @@ JNIEXPORT jint JNICALL Agent_OnLoad(JavaVM *jvm, char *options,
 
 	(void) memset((void*) &data, 0, sizeof(data));
 	gdata = &data;
-	//save jvmti for later
-	gdata->jvmti = jvmti;
 	gdata->jvm = jvm;
 	res = jvm->GetEnv((void **) &jvmti, JVMTI_VERSION_1_0);
 
@@ -313,7 +311,8 @@ JNIEXPORT jint JNICALL Agent_OnLoad(JavaVM *jvm, char *options,
 				" JNIEnv's GetEnv() returned %d\n", JVMTI_VERSION_1, res);
 
 	}
-
+	//save jvmti for later
+	gdata->jvmti = jvmti;
 
 	//Register our capabilities
 	(void) memset(&capa, 0, sizeof(jvmtiCapabilities));
