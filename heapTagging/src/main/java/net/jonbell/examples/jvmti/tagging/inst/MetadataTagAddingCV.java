@@ -7,23 +7,25 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
 public class MetadataTagAddingCV extends ClassVisitor {
-	
+
 	static String METADATA_FIELD_NAME = "jonbellmetadatafield";
+
 	public MetadataTagAddingCV(ClassVisitor cv) {
 		super(Opcodes.ASM5, cv);
 	}
-	
+
 	boolean addField = false;
 	boolean isClass;
 	String className;
+
 	@Override
 	public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
 		isClass = (access & Opcodes.ACC_ENUM) == 0 && (access & Opcodes.ACC_INTERFACE) == 0;
 		addField = isClass && PreMain.isIgnoredClass(superName);
 		className = name;
-		
-		if(isClass)
-		{
+
+		if (isClass) {
+			//Add the interface declaration
 			String[] newInterfaces = new String[interfaces.length + 1];
 			System.arraycopy(interfaces, 0, newInterfaces, 0, interfaces.length);
 			newInterfaces[interfaces.length] = "net/jonbell/examples/jvmti/tagging/runtime/Tagged";
@@ -31,10 +33,10 @@ public class MetadataTagAddingCV extends ClassVisitor {
 		}
 		super.visit(version, access, name, signature, superName, interfaces);
 	}
+
 	@Override
 	public void visitEnd() {
-		if(isClass)
-		{
+		if (isClass) {
 			//Add method to retrieve and set tag
 			MethodVisitor mv = super.visitMethod(Opcodes.ACC_PUBLIC, "getMetadataTag", "()Ljava/lang/Object;", null, null);
 			mv.visitCode();
@@ -43,7 +45,7 @@ public class MetadataTagAddingCV extends ClassVisitor {
 			mv.visitInsn(Opcodes.ARETURN);
 			mv.visitMaxs(0, 0);
 			mv.visitEnd();
-			
+
 			mv = super.visitMethod(Opcodes.ACC_PUBLIC, "setMetadataTag", "(Ljava/lang/Object;)V", null, null);
 			mv.visitCode();
 			mv.visitVarInsn(Opcodes.ALOAD, 0);
@@ -52,9 +54,8 @@ public class MetadataTagAddingCV extends ClassVisitor {
 			mv.visitInsn(Opcodes.RETURN);
 			mv.visitMaxs(0, 0);
 			mv.visitEnd();
-			
-			if(addField)
-			{
+
+			if (addField) {
 				//Add the field itself
 				super.visitField(Opcodes.ACC_PUBLIC, METADATA_FIELD_NAME, "Ljava/lang/Object;", null, null);
 			}

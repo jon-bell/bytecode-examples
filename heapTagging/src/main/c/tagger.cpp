@@ -22,6 +22,7 @@ typedef struct DeleteQueue {
 	DeleteQueue * next;
 } DeleteQueue;
 
+//Queue of global references that need to be cleaned up
 static DeleteQueue * deleteQueue = NULL;
 static jrawMonitorID deleteQueueLock;
 
@@ -66,6 +67,9 @@ static void exit_critical_section(jvmtiEnv *jvmti) {
 	check_jvmti_error(jvmti, error, "Cannot exit with raw monitor");
 }
 
+/*
+ * Implementation of _setTag JNI function.
+ */
 JNIEXPORT static void JNICALL setObjExpression(JNIEnv *env, jclass klass,
 		jobject o, jobject expr) {
 	if (gdata->vmDead) {
@@ -78,12 +82,14 @@ JNIEXPORT static void JNICALL setObjExpression(JNIEnv *env, jclass klass,
 	jvmtiError error;
 	jlong tag;
 	if (expr) {
-		//First see if there's already soemthing set here
+		//First see if there's already something set here
 		error =gdata->jvmti->GetTag(o,&tag);
 		if(tag)
 		{
+			//Delete reference to old thing
 			env->DeleteGlobalRef((jobject)(ptrdiff_t) tag);
 		}
+		//Set the tag, make a new global reference to it
 		error = gdata->jvmti->SetTag(o, (jlong) (ptrdiff_t) (void*) env->NewGlobalRef(expr));
 	} else {
 		error = gdata->jvmti->SetTag(o, 0);
@@ -91,8 +97,10 @@ JNIEXPORT static void JNICALL setObjExpression(JNIEnv *env, jclass klass,
 	if(error == JVMTI_ERROR_WRONG_PHASE)
 	return;
 	check_jvmti_error(gdata->jvmti, error, "Cannot set object tag");
-
 }
+/*
+ * Implementation of _getTag JNI function
+ */
 JNIEXPORT static jobject JNICALL getObjExpression(JNIEnv *env, jclass klass,
 		jobject o) {
 	if (gdata->vmDead) {
@@ -111,6 +119,11 @@ JNIEXPORT static jobject JNICALL getObjExpression(JNIEnv *env, jclass klass,
 	return NULL;
 }
 
+/*
+ * Since we create a global reference to whatever we tag an object with, we need to clean this up
+ * when the tagged object is garbage collected - otherwise tags wouldn't ever be garbage collected.
+ * When a tagged object is GC'ed, we add its tag to a deletion queue. We will process the queue at the next GC.
+ */
 static void JNICALL
 cbObjectFree(jvmtiEnv *jvmti_env, jlong tag) {
 	if (gdata->vmDead) {
@@ -131,6 +144,9 @@ cbObjectFree(jvmtiEnv *jvmti_env, jlong tag) {
 static jrawMonitorID gcLock;
 static int gc_count;
 
+/*
+ * Garbage collection worker thread that will asynchronously free tags
+ */
 static void JNICALL
 gcWorker(jvmtiEnv* jvmti, JNIEnv* jni, void *p)
 {
@@ -151,9 +167,7 @@ gcWorker(jvmtiEnv* jvmti, JNIEnv* jni, void *p)
 		err = jvmti->RawMonitorExit(gcLock);
 		check_jvmti_error(jvmti, err, "raw monitor exit");
 
-		/* Perform arbitrary JVMTI/JNI work here to do post-GC cleanup */
 		DeleteQueue * tmp;
-//	printf("Start cleaning up\n");
 		while(deleteQueue)
 		{
 			err = jvmti->RawMonitorEnter(deleteQueueLock);
@@ -167,10 +181,13 @@ gcWorker(jvmtiEnv* jvmti, JNIEnv* jni, void *p)
 
 			free(tmp);
 		}
-//	printf("End cleaning up\n");
 	}
 }
 
+/*
+ * Callback to notify us when a GC finishes. When a GC finishes,
+ * we wake up our GC thread and free all tags that need to be freed.
+ */
 static void JNICALL
 gc_finish(jvmtiEnv* jvmti_env)
 {
@@ -183,6 +200,9 @@ gc_finish(jvmtiEnv* jvmti_env)
 	err = gdata->jvmti->RawMonitorExit(gcLock);
 	check_jvmti_error(gdata->jvmti, err, "raw monitor exit");
 }
+/*
+ * Create a new java.lang.Thread
+ */
 static jthread alloc_thread(JNIEnv *env) {
 	jclass thrClass;
 	jmethodID cid;
@@ -203,6 +223,9 @@ static jthread alloc_thread(JNIEnv *env) {
 	return res;
 }
 
+/*
+ * Callback we get when the JVM is initialized. We use this time to setup our GC thread
+ */
 static void JNICALL callbackVMInit(jvmtiEnv * jvmti, JNIEnv * env, jthread thread)
 {
 	jvmtiError err;
@@ -211,11 +234,17 @@ static void JNICALL callbackVMInit(jvmtiEnv * jvmti, JNIEnv * env, jthread threa
 			JVMTI_THREAD_MAX_PRIORITY);
 	check_jvmti_error(jvmti, err, "Unable to run agent cleanup thread");
 }
-
+/*
+ * Callback we receive when the JVM terminates - no more functions can be called after this
+ */
 static void JNICALL callbackVMDeath(jvmtiEnv *jvmti_env, JNIEnv* jni_env) {
 	gdata->vmDead = JNI_TRUE;
 }
 
+/*
+ * Callback we get when the JVM starts up, but before its initialized.
+ * Sets up the JNI calls.
+ */
 static void JNICALL cbVMStart(jvmtiEnv *jvmti, JNIEnv *env) {
 
 	enter_critical_section(jvmti);
@@ -255,6 +284,10 @@ static void JNICALL cbVMStart(jvmtiEnv *jvmti, JNIEnv *env) {
 	exit_critical_section(jvmti);
 }
 
+/*
+ * Callback that is notified when our agent is loaded. Registers for event
+ * notifications.
+ */
 JNIEXPORT jint JNICALL Agent_OnLoad(JavaVM *jvm, char *options,
 		void *reserved) {
 	static GlobalAgentData data;
@@ -266,6 +299,8 @@ JNIEXPORT jint JNICALL Agent_OnLoad(JavaVM *jvm, char *options,
 
 	(void) memset((void*) &data, 0, sizeof(data));
 	gdata = &data;
+	//save jvmti for later
+	gdata->jvmti = jvmti;
 	gdata->jvm = jvm;
 	res = jvm->GetEnv((void **) &jvmti, JVMTI_VERSION_1_0);
 
@@ -279,8 +314,8 @@ JNIEXPORT jint JNICALL Agent_OnLoad(JavaVM *jvm, char *options,
 
 	}
 
-	/* Here we save the jvmtiEnv* for Agent_OnUnload(). */
-	gdata->jvmti = jvmti;
+
+	//Register our capabilities
 	(void) memset(&capa, 0, sizeof(jvmtiCapabilities));
 	capa.can_signal_thread = 1;
 	capa.can_generate_object_free_events = 1;
@@ -291,9 +326,10 @@ JNIEXPORT jint JNICALL Agent_OnLoad(JavaVM *jvm, char *options,
 	check_jvmti_error(jvmti, error,
 			"Unable to get necessary JVMTI capabilities.");
 
+	//Register callbacks
 	(void) memset(&callbacks, 0, sizeof(callbacks));
-	callbacks.VMInit = &callbackVMInit; /* JVMTI_EVENT_VM_INIT */
-	callbacks.VMDeath = &callbackVMDeath; /* JVMTI_EVENT_VM_DEATH */
+	callbacks.VMInit = &callbackVMInit;
+	callbacks.VMDeath = &callbackVMDeath;
 	callbacks.VMStart = &cbVMStart;
 	callbacks.ObjectFree = &cbObjectFree;
 	callbacks.GarbageCollectionFinish = &gc_finish;
@@ -301,10 +337,7 @@ JNIEXPORT jint JNICALL Agent_OnLoad(JavaVM *jvm, char *options,
 	error = jvmti->SetEventCallbacks(&callbacks, (jint) sizeof(callbacks));
 	check_jvmti_error(jvmti, error, "Cannot set jvmti callbacks");
 
-	/* At first the only initial events we are interested in are VM
-	 *   initialization, VM death, and Class File Loads.
-	 *   Once the VM is initialized we will request more events.
-	 */
+	//Register for events
 	error = jvmti->SetEventNotificationMode(JVMTI_ENABLE, JVMTI_EVENT_VM_START,
 			(jthread) NULL);
 	check_jvmti_error(jvmti, error, "Cannot set event notification");
@@ -321,9 +354,8 @@ JNIEXPORT jint JNICALL Agent_OnLoad(JavaVM *jvm, char *options,
 			JVMTI_EVENT_OBJECT_FREE, (jthread) NULL);
 	check_jvmti_error(jvmti, error, "Cannot set event notification");
 
-	/* Here we create a raw monitor for our use in this agent to
-	 *   protect critical sections of code.
-	 */
+
+	//Set up a few locks
 	error = jvmti->CreateRawMonitor("agent data", &(gdata->lock));
 	check_jvmti_error(jvmti, error, "Cannot create raw monitor");
 
@@ -333,6 +365,5 @@ JNIEXPORT jint JNICALL Agent_OnLoad(JavaVM *jvm, char *options,
 	error = jvmti->CreateRawMonitor("agent gc queue", &(deleteQueueLock));
 	check_jvmti_error(jvmti, error, "Cannot create raw monitor");
 
-	/* We return JNI_OK to signify success */
 	return JNI_OK;
 }
