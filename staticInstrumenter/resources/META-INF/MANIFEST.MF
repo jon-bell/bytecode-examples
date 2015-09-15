@@ -1,0 +1,5 @@
+Manifest-Version: 1.0
+Created-By: 1.6.0_06 (Sun Microsystems Inc.)
+Premain-Class: net.jonbell.examples.bytecode.instrumenting.PreMain
+Main-Class: net.jonbell.examples.bytecode.instrumenting.Instrumenter
+
