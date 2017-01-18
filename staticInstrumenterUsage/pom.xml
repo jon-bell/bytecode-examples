@@ -2,20 +2,34 @@
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>net.jonbell.examples.bytecode</groupId>
-	<artifactId>instrumenter-maven-plugin</artifactId>
+	<artifactId>StaticBytecodeInstrumenterDemo</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<packaging>maven-plugin</packaging>
+	<packaging>jar</packaging>
 	<build>
 		<plugins>
 			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-jar-plugin</artifactId>
-				<version>2.3.1</version>
-				<configuration>
-					<archive>
-						<manifestFile>resources/META-INF/MANIFEST.MF</manifestFile>
-					</archive>
-				</configuration>
+				<groupId>net.jonbell.examples.bytecode</groupId>
+				<artifactId>instrumenter-maven-plugin</artifactId>
+				<version>0.0.1-SNAPSHOT</version>
+				<executions>
+					<execution>
+						<id>instrument-main</id>
+						<phase>process-classes</phase>
+						<goals>
+							<goal>instrumentBytecode</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>instrument-tests</id>
+						<phase>process-test-classes</phase>
+						<goals>
+							<goal>instrumentBytecode</goal>
+						</goals>
+						<configuration>
+							<instrumentTest>true</instrumentTest>
+						</configuration>
+					</execution>
+				</executions>
 			</plugin>
 			<plugin>
 				<artifactId>maven-compiler-plugin</artifactId>
@@ -38,8 +52,7 @@
 					</execution>
 				</executions>
 				<configuration>
-					<argLine>-Xbootclasspath/p:${project.build.directory}/${project.build.finalName}.jar
-						-javaagent:${project.build.directory}/${project.build.finalName}.jar</argLine>
+					<argLine>-Xbootclasspath/p:${project.build.directory}/${project.build.finalName}.jar</argLine>
 				</configuration>
 			</plugin>
 			<plugin>
@@ -53,12 +66,6 @@
 							<goal>shade</goal>
 						</goals>
 						<configuration>
-							<artifactSet>
-								<includes>
-									<include>commons-cli:commons-cli</include>
-									<include>org.ow2.asm:asm-all</include>
-								</includes>
-							</artifactSet>
 							<relocations>
 								<relocation>
 									<pattern>org.apache.commons.cli</pattern>
@@ -80,21 +87,10 @@
 
 	<dependencies>
 		<dependency>
-			<groupId>org.apache.maven.plugin-tools</groupId>
-			<artifactId>maven-plugin-annotations</artifactId>
-			<version>3.2</version>
-			<scope>provided</scope>
-		</dependency>
-		<dependency>
-			<groupId>org.apache.maven</groupId>
-			<artifactId>maven-project</artifactId>
-			<version>2.2.1</version>
-		</dependency>
-
-		<dependency>
-			<groupId>org.apache.maven</groupId>
-			<artifactId>maven-plugin-api</artifactId>
-			<version>2.2.1</version>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+			<version>4.11</version>
+			<scope>test</scope>
 		</dependency>
 		<dependency>
 			<groupId>commons-cli</groupId>
